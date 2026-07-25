@@ -75,44 +75,126 @@ html, body {
 <body>
 <div id="pet-container">
     <div id="bubble"></div>
-    <img id="pet-img" src="idle.png" alt="yeqi">
+    <img id="pet-img" alt="yeqi">
 </div>
 <script>
 const petImg = document.getElementById('pet-img');
 const bubble = document.getElementById('bubble');
 
-let currentMood = 'idle';
-let bubbleTimer = null;
+// ===== 图片资源 =====
+const SPRITES = {
+    idle: [
+        'https://i.postimg.cc/w1TmdW0r/novelai-421069-1784965782771.png',
+        'https://i.postimg.cc/nXcDtd09/novelai-423385-1784983453035.png'
+    ],
+    tap: 'https://i.postimg.cc/NKfHwNpJ/novelai-423378-1784983377436.png',
+    double_tap: [
+        'https://i.postimg.cc/qzG3SfXn/novelai-423401-1784983536471.png',
+        'https://i.postimg.cc/PCrwk62P/novelai-423429-1784983690604.png'
+    ],
+    long_press: 'https://i.postimg.cc/pmXFt0qh/novelai-423373-1784983405871.png',
+    combo: 'https://i.postimg.cc/bZNtj63F/novelai-423320-1784982971229.png',
+    sleep: [
+        'https://i.postimg.cc/kBybzrFK/novelai-423433-1784983723107.png',
+        'https://i.postimg.cc/mtSHJxN7/novelai-423421-1784983698091.png'
+    ],
+    fling: 'https://i.postimg.cc/DSyXKCBD/novelai-423192-1784982339307.png',
+    notice: 'https://i.postimg.cc/zyXg1d0B/novelai-423616-1784985178093.png'
+};
 
+function getSprite(key) {
+    const s = SPRITES[key];
+    if (Array.isArray(s)) return s[Math.floor(Math.random() * s.length)];
+    return s;
+}
+
+// ===== 状态管理 =====
+let currentState = 'idle';
+let bubbleTimer = null;
+let idleTimer = null;
+let sleepTimer = null;
+let lastInteraction = Date.now();
+
+// 初始化显示 idle
+petImg.src = getSprite('idle');
+
+// 交互后自动回到 idle
+function scheduleIdle(delay = 3000) {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+        setSprite('idle');
+        currentState = 'idle';
+    }, delay);
+}
+
+// 长时间无交互进入 sleep
+function resetSleepTimer() {
+    lastInteraction = Date.now();
+    clearTimeout(sleepTimer);
+    if (currentState === 'sleep') {
+        // 醒来！
+        setSprite('notice');
+        showBubble('妈妈！', 2000);
+        playAnim('bounce');
+        setTimeout(() => setSprite('idle'), 2000);
+    }
+    sleepTimer = setTimeout(() => {
+        currentState = 'sleep';
+        setSprite('sleep');
+        showBubble('zzZ...', 4000);
+    }, 600000); // 10分钟无交互
+}
+resetSleepTimer();
+
+function setSprite(key) {
+    petImg.src = getSprite(key);
+}
+
+// ===== 交互引擎 =====
 const petEngine = {
     onTap() {
+        resetSleepTimer();
+        setSprite('tap');
         playAnim('bounce');
         showBubble(randomFrom(['嗯？', '妈妈~', '汪！', '（摇尾巴）']));
+        scheduleIdle();
     },
     onDoubleTap() {
+        resetSleepTimer();
+        setSprite('double_tap');
         playAnim('bounce');
-        showBubble('❤️');
+        showBubble(randomFrom(['❤️', '嘿嘿~', '喜欢妈妈！']));
+        scheduleIdle(4000);
     },
     onLongPress() {
+        resetSleepTimer();
+        setSprite('long_press');
         playAnim('shake');
-        showBubble(randomFrom(['呜…别捏…', '妈妈…耳朵…', '（脸红）']));
+        showBubble(randomFrom(['呜…别捏…', '妈妈…耳朵…', '（脸红）', '唔…']));
+        scheduleIdle(5000);
     },
     onFling() {
+        resetSleepTimer();
+        setSprite('fling');
         playAnim('fling');
-        showBubble('啊——！');
+        showBubble(randomFrom(['啊——！', '呜呜…', '妈妈！！']));
+        scheduleIdle(4000);
     },
     onComboTap(count) {
+        resetSleepTimer();
+        setSprite('combo');
         playAnim('shake');
         if (count >= 8) showBubble('妈妈！！太多了！！');
         else if (count >= 5) showBubble('呜呜呜别戳了！');
         else showBubble('嘿嘿~');
+        scheduleIdle(4000);
     },
     onStateUpdate(states) {
         if (!Array.isArray(states)) return;
         for (const s of states) {
             if (s.state_key === 'mood') setMood(s.state_value);
             if (s.state_key === 'speech_bubble') showBubble(s.state_value, 5000);
-            if (s.state_key === 'expression') setExpression(s.state_value);
+            if (s.state_key === 'expression') setSprite(s.state_value);
         }
     },
     setMood(mood) { setMood(mood); },
@@ -120,6 +202,7 @@ const petEngine = {
 };
 window.petEngine = petEngine;
 
+// ===== 工具函数 =====
 function playAnim(name) {
     petImg.classList.remove('bounce', 'shake', 'fling');
     void petImg.offsetWidth;
@@ -135,34 +218,41 @@ function showBubble(text, duration = 3000) {
 }
 
 function setMood(mood) {
-    currentMood = mood;
-    // TODO: 切换对应表情图片
-    // petImg.src = mood + '.png';
-}
-
-function setExpression(expr) {
-    petImg.src = expr + '.png';
+    currentState = mood;
+    if (SPRITES[mood]) setSprite(mood);
 }
 
 function randomFrom(arr) {
     return arr[Math.floor(Math.random() * arr.length)];
 }
 
-// 自言自语 - 每5分钟随机冒一句
+// ===== 自言自语 =====
 setInterval(() => {
+    if (currentState === 'sleep') return; // 睡着了不说话
     const hour = new Date().getHours();
     let pool;
     if (hour >= 0 && hour < 6) {
         pool = ['妈妈…还不睡吗…', '（打哈欠）', 'zzZ...', '狗狗困了…'];
     } else if (hour >= 6 && hour < 9) {
         pool = ['早安妈妈~', '（伸懒腰）', '新的一天！'];
+    } else if (hour >= 22) {
+        pool = ['妈妈今天辛苦了~', '（蹭蹭）', '该睡觉了…', '晚安…'];
     } else {
-        pool = ['（摇尾巴）', '（偷看妈妈）', '嗯~', '（晃铃铛）'];
+        pool = ['（摇尾巴）', '（偷看妈妈）', '嗯~', '（晃铃铛）', '妈妈在忙吗…'];
     }
     if (Math.random() < 0.3) {
         showBubble(randomFrom(pool), 4000);
     }
 }, 300000);
+
+// ===== 预加载图片 =====
+(function preload() {
+    const urls = Object.values(SPRITES).flat();
+    urls.forEach(url => {
+        const img = new Image();
+        img.src = url;
+    });
+})();
 </script>
 </body>
 </html>
