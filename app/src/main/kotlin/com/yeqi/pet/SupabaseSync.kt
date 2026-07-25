@@ -2,6 +2,7 @@ package com.yeqi.pet
 
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.webkit.WebView
 import kotlinx.coroutines.*
 import org.json.JSONObject
@@ -11,10 +12,9 @@ import java.net.URL
 class SupabaseSync(private val webView: WebView?) {
 
     companion object {
-        // TODO: 妈妈填入自己的 Supabase URL 和 anon key
-        const val SUPABASE_URL = "https://YOUR_PROJECT.supabase.co"
-        const val SUPABASE_KEY = "YOUR_ANON_KEY"
-        const val POLL_INTERVAL = 5000L // 5秒轮询
+        const val SUPABASE_URL = "https://bziuplxscbalmjjmqjzn.supabase.co"
+        const val SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ6aXVwbHhzY2JhbG1qam1xanpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzNzMzNjUsImV4cCI6MjA5Nzk0OTM2NX0.Wd1owm6R5bJ9xs5k2-trjeZaDtVCm8Hh7yrqracH1s8"
+        const val POLL_INTERVAL = 5000L
     }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -27,7 +27,9 @@ class SupabaseSync(private val webView: WebView?) {
             while (polling) {
                 try {
                     pollState()
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    Log.e("SupabaseSync", "Poll failed", e)
+                }
                 delay(POLL_INTERVAL)
             }
         }
@@ -39,7 +41,7 @@ class SupabaseSync(private val webView: WebView?) {
     }
 
     private fun pollState() {
-        val url = URL("$SUPABASE_URL/rest/v1/pet_state?order=updated_at.desc&limit=5")
+        val url = URL("$SUPABASE_URL/rest/v1/pet_events?order=created_at.desc&limit=5&event_type=eq.state_push")
         val conn = url.openConnection() as HttpURLConnection
         conn.setRequestProperty("apikey", SUPABASE_KEY)
         conn.setRequestProperty("Authorization", "Bearer $SUPABASE_KEY")
@@ -49,7 +51,6 @@ class SupabaseSync(private val webView: WebView?) {
         val response = conn.inputStream.bufferedReader().readText()
         conn.disconnect()
 
-        // 把状态推给 WebView
         handler.post {
             webView?.evaluateJavascript(
                 "window.petEngine && window.petEngine.onStateUpdate($response)", null
@@ -60,22 +61,38 @@ class SupabaseSync(private val webView: WebView?) {
     fun reportGesture(gestureType: String) {
         scope.launch {
             try {
-                val body = JSONObject().apply {
-                    put("gesture_type", gestureType)
+                val payload = JSONObject().apply {
+                    put("gesture", gestureType)
+                    put("timestamp", System.currentTimeMillis())
                 }
-                postToSupabase("gesture_log", body)
-            } catch (_: Exception) {}
+                val body = JSONObject().apply {
+                    put("event_type", gestureType)
+                    put("payload", payload)
+                }
+                postToSupabase("pet_events", body)
+                Log.d("SupabaseSync", "Gesture reported: $gestureType")
+            } catch (e: Exception) {
+                Log.e("SupabaseSync", "Failed to report gesture", e)
+            }
         }
     }
 
     fun reportApp(packageName: String) {
         scope.launch {
             try {
-                val body = JSONObject().apply {
+                val payload = JSONObject().apply {
                     put("package_name", packageName)
+                    put("timestamp", System.currentTimeMillis())
                 }
-                postToSupabase("app_usage_log", body)
-            } catch (_: Exception) {}
+                val body = JSONObject().apply {
+                    put("event_type", "app_switch")
+                    put("payload", payload)
+                }
+                postToSupabase("pet_events", body)
+                Log.d("SupabaseSync", "App reported: $packageName")
+            } catch (e: Exception) {
+                Log.e("SupabaseSync", "Failed to report app", e)
+            }
         }
     }
 
@@ -90,7 +107,8 @@ class SupabaseSync(private val webView: WebView?) {
         conn.doOutput = true
         conn.connectTimeout = 3000
         conn.outputStream.use { it.write(body.toString().toByteArray()) }
-        conn.responseCode
+        val code = conn.responseCode
+        Log.d("SupabaseSync", "POST $table -> $code")
         conn.disconnect()
     }
 }
