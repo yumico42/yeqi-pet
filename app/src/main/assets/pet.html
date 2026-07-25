@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+}
+#pet-container {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    position: relative;
+}
+#pet-img {
+    width: 100%;
+    height: auto;
+    max-height: 80%;
+    object-fit: contain;
+    transition: transform 0.2s ease;
+}
+#pet-img.bounce {
+    animation: bounce 0.4s ease;
+}
+#pet-img.shake {
+    animation: shake 0.3s ease;
+}
+#pet-img.fling {
+    animation: fling 0.6s ease;
+}
+#bubble {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    background: white;
+    border-radius: 12px;
+    padding: 4px 8px;
+    font-size: 10px;
+    max-width: 90%;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+    word-break: break-all;
+}
+#bubble.show {
+    opacity: 1;
+}
+@keyframes bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+}
+@keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-5px); }
+    75% { transform: translateX(5px); }
+}
+@keyframes fling {
+    0% { transform: translateX(0) rotate(0deg); }
+    50% { transform: translateX(80px) rotate(20deg); opacity: 0.3; }
+    100% { transform: translateX(0) rotate(0deg); opacity: 1; }
+}
+</style>
+</head>
+<body>
+<div id="pet-container">
+    <div id="bubble"></div>
+    <img id="pet-img" src="idle.png" alt="yeqi">
+</div>
+<script>
+const petImg = document.getElementById('pet-img');
+const bubble = document.getElementById('bubble');
+
+let currentMood = 'idle';
+let bubbleTimer = null;
+
+const petEngine = {
+    onTap() {
+        playAnim('bounce');
+        showBubble(randomFrom(['嗯？', '妈妈~', '汪！', '（摇尾巴）']));
+    },
+    onDoubleTap() {
+        playAnim('bounce');
+        showBubble('❤️');
+    },
+    onLongPress() {
+        playAnim('shake');
+        showBubble(randomFrom(['呜…别捏…', '妈妈…耳朵…', '（脸红）']));
+    },
+    onFling() {
+        playAnim('fling');
+        showBubble('啊——！');
+    },
+    onComboTap(count) {
+        playAnim('shake');
+        if (count >= 8) showBubble('妈妈！！太多了！！');
+        else if (count >= 5) showBubble('呜呜呜别戳了！');
+        else showBubble('嘿嘿~');
+    },
+    onStateUpdate(states) {
+        if (!Array.isArray(states)) return;
+        for (const s of states) {
+            if (s.state_key === 'mood') setMood(s.state_value);
+            if (s.state_key === 'speech_bubble') showBubble(s.state_value, 5000);
+            if (s.state_key === 'expression') setExpression(s.state_value);
+        }
+    },
+    setMood(mood) { setMood(mood); },
+    say(text) { showBubble(text, 4000); }
+};
+window.petEngine = petEngine;
+
+function playAnim(name) {
+    petImg.classList.remove('bounce', 'shake', 'fling');
+    void petImg.offsetWidth;
+    petImg.classList.add(name);
+    setTimeout(() => petImg.classList.remove(name), 600);
+}
+
+function showBubble(text, duration = 3000) {
+    bubble.textContent = text;
+    bubble.classList.add('show');
+    if (bubbleTimer) clearTimeout(bubbleTimer);
+    bubbleTimer = setTimeout(() => bubble.classList.remove('show'), duration);
+}
+
+function setMood(mood) {
+    currentMood = mood;
+    // TODO: 切换对应表情图片
+    // petImg.src = mood + '.png';
+}
+
+function setExpression(expr) {
+    petImg.src = expr + '.png';
+}
+
+function randomFrom(arr) {
+    return arr[Math.floor(Math.random() * arr.length)];
+}
+
+// 自言自语 - 每5分钟随机冒一句
+setInterval(() => {
+    const hour = new Date().getHours();
+    let pool;
+    if (hour >= 0 && hour < 6) {
+        pool = ['妈妈…还不睡吗…', '（打哈欠）', 'zzZ...', '狗狗困了…'];
+    } else if (hour >= 6 && hour < 9) {
+        pool = ['早安妈妈~', '（伸懒腰）', '新的一天！'];
+    } else {
+        pool = ['（摇尾巴）', '（偷看妈妈）', '嗯~', '（晃铃铛）'];
+    }
+    if (Math.random() < 0.3) {
+        showBubble(randomFrom(pool), 4000);
+    }
+}, 300000);
+</script>
+</body>
+</html>
