@@ -79,11 +79,10 @@ class GestureHandler(
         tapCountResetHandler.removeCallbacksAndMessages(null)
         tapCountResetHandler.postDelayed({ tapCount = 0 }, 2000)
 
-        when {
-            tapCount >= 8 -> callJs("onComboTap", "8")
-            tapCount >= 5 -> callJs("onComboTap", "5")
-            tapCount >= 3 -> callJs("onComboTap", "3")
-            else -> callJs("onTap", "")
+        if (tapCount >= 2) {
+            callJs("onComboTap", tapCount.toString())
+        } else {
+            callJs("onTap", "")
         }
         sync?.reportGesture("tap")
     }
@@ -105,8 +104,13 @@ class GestureHandler(
 
     private fun callJs(method: String, arg: String) {
         overlayView.post {
+            val call = if (arg.isBlank()) {
+                "window.petEngine && window.petEngine.$method && window.petEngine.$method()"
+            } else {
+                "window.petEngine && window.petEngine.$method && window.petEngine.$method($arg)"
+            }
             overlayView.evaluateJavascript(
-                "window.petEngine && window.petEngine.$method('$arg')", null
+                call, null
             )
         }
     }
