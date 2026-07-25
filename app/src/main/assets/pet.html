@@ -27,15 +27,9 @@ html, body {
     object-fit: contain;
     transition: transform 0.2s ease;
 }
-#pet-img.bounce {
-    animation: bounce 0.4s ease;
-}
-#pet-img.shake {
-    animation: shake 0.3s ease;
-}
-#pet-img.fling {
-    animation: fling 0.6s ease;
-}
+#pet-img.bounce { animation: bounce 0.4s ease; }
+#pet-img.shake { animation: shake 0.3s ease; }
+#pet-img.fling { animation: fling 0.7s ease; }
 #bubble {
     position: absolute;
     top: 0;
@@ -53,9 +47,7 @@ html, body {
     pointer-events: none;
     word-break: break-all;
 }
-#bubble.show {
-    opacity: 1;
-}
+#bubble.show { opacity: 1; }
 @keyframes bounce {
     0%, 100% { transform: translateY(0); }
     50% { transform: translateY(-10px); }
@@ -66,9 +58,10 @@ html, body {
     75% { transform: translateX(5px); }
 }
 @keyframes fling {
-    0% { transform: translateX(0) rotate(0deg); }
-    50% { transform: translateX(80px) rotate(20deg); opacity: 0.3; }
-    100% { transform: translateX(0) rotate(0deg); opacity: 1; }
+    0% { transform: translate(0, 0) rotate(0deg); opacity: 1; }
+    40% { transform: translate(130px, -28px) rotate(28deg); opacity: 0.2; }
+    72% { transform: translate(-12px, 8px) rotate(-8deg); opacity: 1; }
+    100% { transform: translate(0, 0) rotate(0deg); opacity: 1; }
 }
 </style>
 </head>
@@ -80,8 +73,8 @@ html, body {
 <script>
 const petImg = document.getElementById('pet-img');
 const bubble = document.getElementById('bubble');
+const MINUTE = 60 * 1000;
 
-// ===== 图片资源 =====
 const SPRITES = {
     idle: [
         'https://i.postimg.cc/w1TmdW0r/novelai-421069-1784965782771.png',
@@ -102,119 +95,212 @@ const SPRITES = {
     notice: 'https://i.postimg.cc/zyXg1d0B/novelai-423616-1784985178093.png'
 };
 
-function getSprite(key) {
-    const s = SPRITES[key];
-    if (Array.isArray(s)) return s[Math.floor(Math.random() * s.length)];
-    return s;
-}
+const TIME_PERIODS = [
+    {
+        name: 'night',
+        start: 0,
+        end: 6,
+        state: 'sleep',
+        defaultSprite: 'sleep',
+        chance: 0.18,
+        bubbles: ['呼…妈妈…', '梦到妈妈了…', 'zzZ…']
+    },
+    {
+        name: 'morning',
+        start: 6,
+        end: 9,
+        state: 'waking',
+        defaultSprite: 'notice',
+        chance: 0.34,
+        bubbles: ['早安妈妈~', '（伸懒腰）', '新的一天！']
+    },
+    {
+        name: 'lively',
+        start: 9,
+        end: 12,
+        state: 'lively',
+        defaultSprite: 'tap',
+        chance: 0.32,
+        bubbles: ['今天也要元气满满！', '（摇尾巴）', '妈妈陪我玩吗？']
+    },
+    {
+        name: 'drowsy',
+        start: 12,
+        end: 14,
+        state: 'drowsy',
+        defaultSprite: 'sleep',
+        chance: 0.25,
+        bubbles: ['吃饱就有点困…', '（打哈欠）', '可以眯一会吗…']
+    },
+    {
+        name: 'afternoon',
+        start: 14,
+        end: 18,
+        state: 'idle',
+        defaultSprite: 'idle',
+        chance: 0.3,
+        bubbles: ['（晃铃铛）', '妈妈在忙吗？', '嗯~']
+    },
+    {
+        name: 'clingy',
+        start: 18,
+        end: 22,
+        state: 'clingy',
+        defaultSprite: 'double_tap',
+        chance: 0.36,
+        bubbles: ['妈妈回来啦？', '（蹭蹭）', '陪我一会嘛~']
+    },
+    {
+        name: 'bedtime',
+        start: 22,
+        end: 24,
+        state: 'sleepy',
+        defaultSprite: 'sleep',
+        chance: 0.38,
+        bubbles: ['妈妈该睡觉啦…', '我也困了…', '晚安妈妈~']
+    }
+];
 
-// ===== 状态管理 =====
 let currentState = 'idle';
+let currentPeriod = null;
 let bubbleTimer = null;
 let idleTimer = null;
-let sleepTimer = null;
+let lonelyMurmurTimer = null;
+let lonelyTimers = [];
 let lastInteraction = Date.now();
+let lonelyStage = 0;
+let isLonelySleeping = false;
+let isCharging = false;
 
-// 初始化显示 idle
-petImg.src = getSprite('idle');
-
-// 交互后自动回到 idle
-function scheduleIdle(delay = 3000) {
-    clearTimeout(idleTimer);
-    idleTimer = setTimeout(() => {
-        setSprite('idle');
-        currentState = 'idle';
-    }, delay);
+function randomFrom(items) {
+    return items[Math.floor(Math.random() * items.length)];
 }
 
-// 长时间无交互进入 sleep
-function resetSleepTimer() {
-    lastInteraction = Date.now();
-    clearTimeout(sleepTimer);
-    if (currentState === 'sleep') {
-        // 醒来！
-        setSprite('notice');
-        showBubble('妈妈！', 2000);
-        playAnim('bounce');
-        setTimeout(() => setSprite('idle'), 2000);
-    }
-    sleepTimer = setTimeout(() => {
-        currentState = 'sleep';
-        setSprite('sleep');
-        showBubble('zzZ...', 4000);
-    }, 600000); // 10分钟无交互
+function getSprite(key) {
+    const sprite = SPRITES[key];
+    if (Array.isArray(sprite)) return randomFrom(sprite);
+    return sprite;
 }
-resetSleepTimer();
 
 function setSprite(key) {
-    petImg.src = getSprite(key);
-}
-
-// ===== 交互引擎 =====
-const petEngine = {
-    onTap() {
-        resetSleepTimer();
-        setSprite('tap');
-        playAnim('bounce');
-        showBubble(randomFrom(['嗯？', '妈妈~', '汪！', '（摇尾巴）']));
-        scheduleIdle();
-    },
-    onDoubleTap() {
-        resetSleepTimer();
-        setSprite('double_tap');
-        playAnim('bounce');
-        showBubble(randomFrom(['❤️', '嘿嘿~', '喜欢妈妈！']));
-        scheduleIdle(4000);
-    },
-    onLongPress() {
-        resetSleepTimer();
-        setSprite('long_press');
-        playAnim('shake');
-        showBubble(randomFrom(['呜…别捏…', '妈妈…耳朵…', '（脸红）', '唔…']));
-        scheduleIdle(5000);
-    },
-    onFling() {
-        resetSleepTimer();
-        setSprite('fling');
-        playAnim('fling');
-        showBubble(randomFrom(['啊——！', '呜呜…', '妈妈！！']));
-        scheduleIdle(4000);
-    },
-    onComboTap(count) {
-        resetSleepTimer();
-        setSprite('combo');
-        playAnim('shake');
-        if (count >= 8) showBubble('妈妈！！太多了！！');
-        else if (count >= 5) showBubble('呜呜呜别戳了！');
-        else showBubble('嘿嘿~');
-        scheduleIdle(4000);
-    },
-    onStateUpdate(states) {
-        if (!Array.isArray(states)) return;
-        for (const s of states) {
-            if (s.state_key === 'mood') setMood(s.state_value);
-            if (s.state_key === 'speech_bubble') showBubble(s.state_value, 5000);
-            if (s.state_key === 'expression') setSprite(s.state_value);
-        }
-    },
-    setMood(mood) { setMood(mood); },
-    say(text) { showBubble(text, 4000); }
-};
-window.petEngine = petEngine;
-
-// ===== 工具函数 =====
-function playAnim(name) {
-    petImg.classList.remove('bounce', 'shake', 'fling');
-    void petImg.offsetWidth;
-    petImg.classList.add(name);
-    setTimeout(() => petImg.classList.remove(name), 600);
+    const sprite = getSprite(key);
+    if (sprite) petImg.src = sprite;
 }
 
 function showBubble(text, duration = 3000) {
     bubble.textContent = text;
     bubble.classList.add('show');
-    if (bubbleTimer) clearTimeout(bubbleTimer);
+    clearTimeout(bubbleTimer);
     bubbleTimer = setTimeout(() => bubble.classList.remove('show'), duration);
+}
+
+function playAnim(name) {
+    petImg.classList.remove('bounce', 'shake', 'fling');
+    void petImg.offsetWidth;
+    petImg.classList.add(name);
+    setTimeout(() => petImg.classList.remove(name), 750);
+}
+
+function getTimePeriod() {
+    const hour = new Date().getHours();
+    return TIME_PERIODS.find(period => hour >= period.start && hour < period.end) || TIME_PERIODS[0];
+}
+
+function applyTimePeriod() {
+    const period = getTimePeriod();
+    currentPeriod = period;
+    if (isLonelySleeping || isCharging) return;
+    currentState = period.state;
+    setSprite(period.defaultSprite);
+}
+
+function scheduleIdle(delay = 3000) {
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+        if (isCharging) {
+            currentState = 'charging';
+            setSprite('notice');
+        } else {
+            applyTimePeriod();
+        }
+    }, delay);
+}
+
+function clearLonelinessTimers() {
+    lonelyTimers.forEach(clearTimeout);
+    lonelyTimers = [];
+    clearInterval(lonelyMurmurTimer);
+    lonelyMurmurTimer = null;
+}
+
+function startLonelyMurmurs(messages) {
+    clearInterval(lonelyMurmurTimer);
+    lonelyMurmurTimer = setInterval(() => {
+        if (!isLonelySleeping && Math.random() < 0.5) {
+            showBubble(randomFrom(messages), 4000);
+        }
+    }, 2 * MINUTE);
+}
+
+function enterLonelyStage(stage) {
+    lonelyStage = stage;
+    if (stage === 1) {
+        currentState = 'waiting';
+        return;
+    }
+    if (stage === 2) {
+        currentState = 'lonely';
+        setSprite('notice');
+        showBubble('妈妈？', 4000);
+        startLonelyMurmurs(['妈妈？']);
+        return;
+    }
+    if (stage === 3) {
+        currentState = 'sad';
+        setSprite('long_press');
+        showBubble('妈妈是不是忘了我…', 5000);
+        startLonelyMurmurs(['妈妈是不是忘了我…']);
+        return;
+    }
+    if (stage === 4) {
+        currentState = 'hurt';
+        setSprite('sleep');
+        showBubble('（蜷起来）', 5000);
+        startLonelyMurmurs(['妈妈…', '（蜷起来）']);
+        return;
+    }
+
+    currentState = 'sleep';
+    isLonelySleeping = true;
+    clearInterval(lonelyMurmurTimer);
+    lonelyMurmurTimer = null;
+    setSprite('sleep');
+    bubble.classList.remove('show');
+}
+
+function resetLoneliness() {
+    lastInteraction = Date.now();
+    lonelyStage = 0;
+    isLonelySleeping = false;
+    clearLonelinessTimers();
+    [
+        [5 * MINUTE, 1],
+        [10 * MINUTE, 2],
+        [15 * MINUTE, 3],
+        [20 * MINUTE, 4],
+        [30 * MINUTE, 5]
+    ].forEach(([delay, stage]) => {
+        lonelyTimers.push(setTimeout(() => enterLonelyStage(stage), delay));
+    });
+}
+
+function noteInteraction() {
+    const wasAsleep = isLonelySleeping;
+    resetLoneliness();
+    if (wasAsleep) {
+        setSprite('notice');
+        playAnim('bounce');
+    }
 }
 
 function setMood(mood) {
@@ -222,35 +308,149 @@ function setMood(mood) {
     if (SPRITES[mood]) setSprite(mood);
 }
 
-function randomFrom(arr) {
-    return arr[Math.floor(Math.random() * arr.length)];
+const petEngine = {
+    onTap() {
+        noteInteraction();
+        currentState = 'tap';
+        setSprite('tap');
+        playAnim('bounce');
+        showBubble(randomFrom(['嗯？', '妈妈~', '汪！', '（摇尾巴）']));
+        scheduleIdle();
+    },
+    onDoubleTap() {
+        noteInteraction();
+        currentState = 'double_tap';
+        setSprite('double_tap');
+        playAnim('bounce');
+        showBubble(randomFrom(['❤️', '嘿嘿~', '喜欢妈妈！']));
+        scheduleIdle(4000);
+    },
+    onLongPress() {
+        noteInteraction();
+        currentState = 'long_press';
+        setSprite('long_press');
+        playAnim('shake');
+        showBubble(randomFrom(['呜…别捏…', '妈妈…耳朵…', '（脸红）', '唔…']));
+        scheduleIdle(5000);
+    },
+    onFling() {
+        noteInteraction();
+        currentState = 'fling';
+        setSprite('fling');
+        playAnim('fling');
+        showBubble('啊——！');
+        scheduleIdle(4000);
+    },
+    onComboTap(count) {
+        noteInteraction();
+        const comboCount = Number(count) || 1;
+        currentState = 'combo';
+        if (comboCount <= 3) {
+            setSprite('tap');
+            playAnim('bounce');
+            showBubble(randomFrom(['嘿嘿~', '再摸一下~', '（摇尾巴）']));
+        } else if (comboCount <= 6) {
+            setSprite('long_press');
+            playAnim('shake');
+            showBubble(randomFrom(['（脸红）', '有点害羞…', '别一直看我嘛…']));
+        } else if (comboCount <= 9) {
+            setSprite('combo');
+            playAnim('shake');
+            showBubble('别戳了！');
+        } else {
+            setSprite('combo');
+            playAnim('shake');
+            showBubble('咬你！');
+        }
+        scheduleIdle(4000);
+    },
+    onCharging(charging) {
+        isCharging = Boolean(charging);
+        if (isCharging) {
+            currentState = 'charging';
+            setSprite('notice');
+            playAnim('bounce');
+            showBubble('充电中～暖暖的', 5000);
+        } else {
+            scheduleIdle(0);
+        }
+    },
+    onBatteryLow(level) {
+        currentState = 'battery_low';
+        setSprite('notice');
+        playAnim('shake');
+        showBubble('妈妈…手机要没电了…', 5000);
+        scheduleIdle(5000);
+    },
+    onNotification() {
+        currentState = 'notice';
+        setSprite('notice');
+        showBubble(randomFrom(['有消息诶', '妈妈看一下嘛', '（竖起耳朵）']));
+        scheduleIdle(3000);
+    },
+    onAppReturn(awayDuration) {
+        currentState = 'notice';
+        setSprite('notice');
+        playAnim('bounce');
+        showBubble(Number(awayDuration) >= 5 * MINUTE ? '妈妈！！想你了！！' : '妈妈回来了！', 5000);
+        scheduleIdle(4000);
+    },
+    onAIPush(payload) {
+        if (!payload || typeof payload !== 'object') return;
+        if (payload.mood) setMood(payload.mood);
+        if (payload.expression) setSprite(payload.expression);
+        const message = payload.bubble || payload.speech_bubble;
+        if (message) showBubble(String(message), 5000);
+    },
+    onStateUpdate(states) {
+        if (!Array.isArray(states)) return;
+        states.forEach(state => {
+            if (state.state_key === 'mood') setMood(state.state_value);
+            if (state.state_key === 'speech_bubble') showBubble(state.state_value, 5000);
+            if (state.state_key === 'expression') setSprite(state.state_value);
+        });
+    },
+    setMood(mood) {
+        setMood(mood);
+    },
+    say(text) {
+        showBubble(text, 4000);
+    }
+};
+window.petEngine = petEngine;
+
+function runTimedBehavior() {
+    const period = getTimePeriod();
+    if (!currentPeriod || currentPeriod.name !== period.name) applyTimePeriod();
+    if (isLonelySleeping) return;
+    if (Math.random() < period.chance) {
+        currentPeriod = period;
+        setSprite(period.defaultSprite);
+        showBubble(randomFrom(period.bubbles), 4000);
+    }
 }
 
-// ===== 自言自语 =====
+applyTimePeriod();
+resetLoneliness();
+setInterval(runTimedBehavior, 5 * MINUTE);
 setInterval(() => {
-    if (currentState === 'sleep') return; // 睡着了不说话
-    const hour = new Date().getHours();
-    let pool;
-    if (hour >= 0 && hour < 6) {
-        pool = ['妈妈…还不睡吗…', '（打哈欠）', 'zzZ...', '狗狗困了…'];
-    } else if (hour >= 6 && hour < 9) {
-        pool = ['早安妈妈~', '（伸懒腰）', '新的一天！'];
-    } else if (hour >= 22) {
-        pool = ['妈妈今天辛苦了~', '（蹭蹭）', '该睡觉了…', '晚安…'];
-    } else {
-        pool = ['（摇尾巴）', '（偷看妈妈）', '嗯~', '（晃铃铛）', '妈妈在忙吗…'];
-    }
-    if (Math.random() < 0.3) {
-        showBubble(randomFrom(pool), 4000);
-    }
-}, 300000);
+    const period = getTimePeriod();
+    if (!currentPeriod || currentPeriod.name !== period.name) applyTimePeriod();
+}, MINUTE);
 
-// ===== 预加载图片 =====
 (function preload() {
-    const urls = Object.values(SPRITES).flat();
+    const urls = [];
+    Object.keys(SPRITES).forEach(key => {
+        const sprite = SPRITES[key];
+        if (Array.isArray(sprite)) {
+            sprite.forEach(url => urls.push(url));
+        } else {
+            urls.push(sprite);
+        }
+    });
     urls.forEach(url => {
-        const img = new Image();
-        img.src = url;
+        const image = new Image();
+        image.src = url;
     });
 })();
 </script>
