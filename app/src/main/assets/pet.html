@@ -246,7 +246,9 @@ function startLonelyMurmurs(messages) {
 function enterLonelyStage(stage) {
     lonelyStage = stage;
     if (stage === 1) {
-        currentState = 'waiting';
+        currentState = 'drowsy';
+        setSprite('sleep');
+        showBubble('（打瞌睡…）', 3000);
         return;
     }
     if (stage === 2) {
