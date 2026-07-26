@@ -184,7 +184,7 @@ function getSprite(key) {
 
 function setSprite(key) {
     const sprite = getSprite(key);
-    if (sprite) petImg.src = sprite;
+    if (sprite) petImg.src = (window._spriteCache && window._spriteCache[sprite]) || sprite;
 }
 
 function showBubble(text, duration = 3000) {
