@@ -444,16 +444,46 @@ setInterval(() => {
     const urls = [];
     Object.keys(SPRITES).forEach(key => {
         const sprite = SPRITES[key];
-        if (Array.isArray(sprite)) {
-            sprite.forEach(url => urls.push(url));
-        } else {
-            urls.push(sprite);
+        if (Array.isArray(sprite)) sprite.forEach(url => urls.push(url));
+        else urls.push(sprite);
+    });
+
+    const processedCache = {};
+
+    function removeWhite(url, callback) {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = function() {
+            const c = document.createElement('canvas');
+            c.width = img.naturalWidth;
+            c.height = img.naturalHeight;
+            const ctx = c.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            const d = ctx.getImageData(0, 0, c.width, c.height);
+            for (let i = 0; i < d.data.length; i += 4) {
+                const r = d.data[i], g = d.data[i+1], b = d.data[i+2];
+                if (r > 235 && g > 235 && b > 235) {
+                    d.data[i+3] = 0;
+                }
+            }
+            ctx.putImageData(d, 0, 0);
+            processedCache[url] = c.toDataURL('image/png');
+            callback();
+        };
+        img.onerror = function() { callback(); };
+        img.src = url;
+    }
+
+    let idx = 0;
+    function next() {
+        if (idx >= urls.length) {
+            window._spriteCache = processedCache;
+            setSprite(currentPeriod ? currentPeriod.defaultSprite : 'idle');
+            return;
         }
-    });
-    urls.forEach(url => {
-        const image = new Image();
-        image.src = url;
-    });
+        removeWhite(urls[idx++], next);
+    }
+    next();
 })();
 </script>
 </body>
